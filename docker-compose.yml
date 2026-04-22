@@ -1,0 +1,250 @@
+version: '3.8'
+
+networks:
+  neuroscan-net:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  rabbitmq_data:
+  consul_data:
+  mri_uploads:
+
+services:
+
+  # ─── Infrastructure ────────────────────────────────────────────────
+
+  postgres:
+    image: postgres:15-alpine
+    container_name: neuroscan-postgres
+    environment:
+      POSTGRES_DB: neuroscan
+      POSTGRES_USER: neuroscan_user
+      POSTGRES_PASSWORD: neuroscan_pass
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/migrations:/docker-entrypoint-initdb.d
+    ports:
+      - "5432:5432"
+    networks:
+      - neuroscan-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U neuroscan_user -d neuroscan"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.12-management-alpine
+    container_name: neuroscan-rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: neuroscan
+      RABBITMQ_DEFAULT_PASS: neuroscan_pass
+      RABBITMQ_DEFAULT_VHOST: neuroscan_vhost
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+      - ./infrastructure/rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - neuroscan-net
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 30s
+
+  consul:
+    image: consul:1.15
+    container_name: neuroscan-consul
+    command: agent -dev -ui -client=0.0.0.0 -log-level=warn
+    volumes:
+      - consul_data:/consul/data
+    ports:
+      - "8500:8500"
+      - "8600:8600/udp"
+    networks:
+      - neuroscan-net
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # FIX: Traefik without Docker provider - use static file routing instead
+  # This avoids the Docker socket permission issue on Windows
+  traefik:
+    image: traefik:v2.10
+    container_name: neuroscan-traefik
+    command:
+      - "--api.insecure=true"
+      - "--providers.file.filename=/etc/traefik/dynamic.yml"
+      - "--providers.file.watch=true"
+      - "--entrypoints.web.address=:80"
+      - "--log.level=INFO"
+    ports:
+      - "80:80"
+      - "8080:8080"
+    volumes:
+      - ./infrastructure/traefik/dynamic.yml:/etc/traefik/dynamic.yml:ro
+    networks:
+      - neuroscan-net
+
+  # ─── Backend Microservices ─────────────────────────────────────────
+
+  auth-service:
+    build:
+      context: ./backend/auth-service
+      dockerfile: Dockerfile
+    container_name: neuroscan-auth
+    environment:
+      - NODE_ENV=production
+      - PORT=3001
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=neuroscan
+      - DB_USER=neuroscan_user
+      - DB_PASS=neuroscan_pass
+      - JWT_SECRET=neuroscan_super_secret_jwt_key_2025
+      - JWT_EXPIRES_IN=24h
+      - CONSUL_HOST=consul
+      - CONSUL_PORT=8500
+      - SERVICE_NAME=auth-service
+      - SERVICE_HOST=auth-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks:
+      - neuroscan-net
+
+  business-service:
+    build:
+      context: ./backend/business-service
+      dockerfile: Dockerfile
+    container_name: neuroscan-business
+    environment:
+      - NODE_ENV=production
+      - PORT=3002
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=neuroscan
+      - DB_USER=neuroscan_user
+      - DB_PASS=neuroscan_pass
+      - JWT_SECRET=neuroscan_super_secret_jwt_key_2025
+      - RABBITMQ_URL=amqp://neuroscan:neuroscan_pass@rabbitmq:5672/neuroscan_vhost
+      - CONSUL_HOST=consul
+      - CONSUL_PORT=8500
+      - SERVICE_NAME=business-service
+      - SERVICE_HOST=business-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks:
+      - neuroscan-net
+
+  mri-service:
+    build:
+      context: ./backend/mri-service
+      dockerfile: Dockerfile
+    container_name: neuroscan-mri
+    environment:
+      - NODE_ENV=production
+      - PORT=3003
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=neuroscan
+      - DB_USER=neuroscan_user
+      - DB_PASS=neuroscan_pass
+      - JWT_SECRET=neuroscan_super_secret_jwt_key_2025
+      - RABBITMQ_URL=amqp://neuroscan:neuroscan_pass@rabbitmq:5672/neuroscan_vhost
+      - CONSUL_HOST=consul
+      - CONSUL_PORT=8500
+      - SERVICE_NAME=mri-service
+      - SERVICE_HOST=mri-service
+      - UPLOAD_PATH=/uploads
+    volumes:
+      - mri_uploads:/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks:
+      - neuroscan-net
+
+  ai-service:
+    build:
+      context: ./backend/ai-service
+      dockerfile: Dockerfile
+    container_name: neuroscan-ai
+    environment:
+      - NODE_ENV=production
+      - PORT=3004
+      - RABBITMQ_URL=amqp://neuroscan:neuroscan_pass@rabbitmq:5672/neuroscan_vhost
+      - CONSUL_HOST=consul
+      - CONSUL_PORT=8500
+      - SERVICE_NAME=ai-service
+      - SERVICE_HOST=ai-service
+      - INFERENCE_VERSION=placeholder-v1.0
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks:
+      - neuroscan-net
+
+  notification-service:
+    build:
+      context: ./backend/notification-service
+      dockerfile: Dockerfile
+    container_name: neuroscan-notifications
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_NAME=neuroscan
+      - DB_USER=neuroscan_user
+      - DB_PASS=neuroscan_pass
+      - JWT_SECRET=neuroscan_super_secret_jwt_key_2025
+      - RABBITMQ_URL=amqp://neuroscan:neuroscan_pass@rabbitmq:5672/neuroscan_vhost
+      - CONSUL_HOST=consul
+      - CONSUL_PORT=8500
+      - SERVICE_NAME=notification-service
+      - SERVICE_HOST=notification-service
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    networks:
+      - neuroscan-net
+
+  # ─── Frontend ──────────────────────────────────────────────────────
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: neuroscan-frontend
+    environment:
+      - REACT_APP_API_URL=http://localhost/api
+    depends_on:
+      - auth-service
+      - business-service
+      - mri-service
+    networks:
+      - neuroscan-net

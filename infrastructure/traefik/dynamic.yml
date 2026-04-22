@@ -1,0 +1,98 @@
+http:
+  routers:
+    # Auth service
+    auth:
+      rule: "PathPrefix(`/api/auth`)"
+      service: auth-svc
+      entryPoints:
+        - web
+
+    # Business service
+    business:
+      rule: "PathPrefix(`/api/business`)"
+      service: business-svc
+      entryPoints:
+        - web
+
+    # MRI service
+    mri:
+      rule: "PathPrefix(`/api/mri`)"
+      service: mri-svc
+      entryPoints:
+        - web
+
+    # AI service
+    ai:
+      rule: "PathPrefix(`/api/ai`)"
+      service: ai-svc
+      entryPoints:
+        - web
+
+    # Notification service
+    notifications:
+      rule: "PathPrefix(`/api/notifications`)"
+      service: notif-svc
+      entryPoints:
+        - web
+
+    # Uploaded files (MRI images served by mri-service)
+    uploads:
+      rule: "PathPrefix(`/uploads`)"
+      service: mri-svc
+      entryPoints:
+        - web
+
+    # Frontend (catch-all, lowest priority)
+    frontend:
+      rule: "PathPrefix(`/`)"
+      service: frontend-svc
+      entryPoints:
+        - web
+      priority: 1
+
+  services:
+    auth-svc:
+      loadBalancer:
+        servers:
+          - url: "http://auth-service:3001"
+
+    business-svc:
+      loadBalancer:
+        servers:
+          - url: "http://business-service:3002"
+
+    mri-svc:
+      loadBalancer:
+        servers:
+          - url: "http://mri-service:3003"
+
+    ai-svc:
+      loadBalancer:
+        servers:
+          - url: "http://ai-service:3004"
+
+    notif-svc:
+      loadBalancer:
+        servers:
+          - url: "http://notification-service:3005"
+
+    frontend-svc:
+      loadBalancer:
+        servers:
+          - url: "http://frontend:3000"
+
+  middlewares:
+    cors:
+      headers:
+        accessControlAllowMethods:
+          - GET
+          - POST
+          - PUT
+          - DELETE
+          - OPTIONS
+        accessControlAllowOriginList:
+          - "*"
+        accessControlAllowHeaders:
+          - "Content-Type"
+          - "Authorization"
+        accessControlMaxAge: 86400
