@@ -35,7 +35,7 @@ services:
       retries: 5
 
   rabbitmq:
-    image: rabbitmq:3.12-management-alpine
+    image: rabbitmq:3.12-management 
     container_name: neuroscan-rabbitmq
     environment:
       RABBITMQ_DEFAULT_USER: neuroscan
@@ -53,8 +53,8 @@ services:
       test: ["CMD", "rabbitmq-diagnostics", "ping"]
       interval: 15s
       timeout: 10s
-      retries: 10
-      start_period: 30s
+      retries: 15
+      start_period: 60s
 
   consul:
     image: consul:1.15
@@ -195,7 +195,9 @@ services:
       - CONSUL_PORT=8500
       - SERVICE_NAME=ai-service
       - SERVICE_HOST=ai-service
-      - INFERENCE_VERSION=placeholder-v1.0
+      - UPLOADS_DIR=/uploads              # ← ajouté
+    volumes:
+      - mri_uploads:/uploads              # ← ajouté
     depends_on:
       rabbitmq:
         condition: service_healthy

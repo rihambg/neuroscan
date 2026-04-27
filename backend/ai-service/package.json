@@ -1,7 +1,7 @@
 {
   "name": "neuroscan-ai-service",
   "version": "1.0.0",
-  "description": "NeuroScan AI Placeholder Microservice - Replace with real DL model",
+  "description": "NeuroScan AI Service — ONNX inference",
   "main": "src/index.js",
   "scripts": {
     "start": "node src/index.js",
@@ -16,7 +16,9 @@
     "morgan": "^1.10.0",
     "dotenv": "^16.3.1",
     "uuid": "^9.0.0",
-    "jsonwebtoken": "^9.0.2"
+    "jsonwebtoken": "^9.0.2",
+    "onnxruntime-node": "^1.18.0",
+    "jimp": "^0.22.12"
   },
   "devDependencies": {
     "nodemon": "^3.0.2"

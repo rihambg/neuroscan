@@ -131,8 +131,21 @@ export default function DoctorMRIReview() {
                       onError={e => { e.target.style.display = 'none'; }}
                     />
                     {showMask && aiResult?.segmentationMaskPath && (
-                      <div style={s.maskOverlay} />
-                    )}
+                     <img
+                       src={`${API_URL.replace('/api', '')}${aiResult.segmentationMaskPath}`}
+                       alt="Segmentation mask"
+                       style={{
+                        position  : 'absolute',
+                        inset     : 0,
+                        width     : '100%',
+                        height    : '100%',
+                        objectFit : 'contain',
+                        opacity   : 0.6,
+                        mixBlendMode: 'screen',
+                        pointerEvents: 'none',
+                        }}
+                      />
+                   )}
                   </div>
                 ) : (
                   <div style={s.noImage}>

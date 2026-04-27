@@ -1,25 +1,30 @@
-// NeuroScan AI Service - PLACEHOLDER
-// ============================================================
-// THIS SERVICE IS A PLACEHOLDER.
-// Replace the analyze() function below with the real deep
-// learning model inference when ready.
-// The INPUT/OUTPUT CONTRACT must remain unchanged so that
-// the frontend and business logic do not need modification.
-// ============================================================
 require('dotenv').config();
-const express = require('express');
-const cors = require('cors');
-const helmet = require('helmet');
-const morgan = require('morgan');
-const amqplib = require('amqplib');
+const express      = require('express');
+const cors         = require('cors');
+const helmet       = require('helmet');
+const morgan       = require('morgan');
+const amqplib      = require('amqplib');
 const { v4: uuidv4 } = require('uuid');
-const jwt = require('jsonwebtoken');
-const Consul = require('consul');
+const jwt          = require('jsonwebtoken');
+const Consul       = require('consul');
+const ort          = require('onnxruntime-node');
+const Jimp         = require('jimp');
+const path         = require('path');
+const fs           = require('fs');
 
-const app = express();
+const app  = express();
 const PORT = process.env.PORT || 3004;
-const INFERENCE_VERSION = process.env.INFERENCE_VERSION || 'placeholder-v1.0';
-const JWT_SECRET = process.env.JWT_SECRET || 'neuroscan_super_secret_jwt_key_2025';
+const JWT_SECRET       = process.env.JWT_SECRET || 'neuroscan_super_secret_jwt_key_2025';
+const INFERENCE_VERSION = 'v1.0.0';
+const RABBITMQ_URL     = process.env.RABBITMQ_URL || 'amqp://neuroscan:neuroscan_pass@localhost:5672/neuroscan_vhost';
+const UPLOADS_DIR      = process.env.UPLOADS_DIR  || '/uploads';
+const MASKS_DIR        = path.join(UPLOADS_DIR, 'masks');
+const MODEL_PATH       = path.join(__dirname, '..', 'models', 'multitask_brain.onnx');
+
+const IMG_SIZE = 256;
+const CLASSES  = ['glioma', 'meningioma', 'notumor', 'pituitary'];
+const MEAN     = [0.485, 0.456, 0.406];
+const STD      = [0.229, 0.224, 0.225];
 
 app.use(helmet());
 app.use(cors({ origin: '*' }));
@@ -41,141 +46,180 @@ function requireDoctor(req, res, next) {
   next();
 }
 
-// ─── PLACEHOLDER AI LOGIC ────────────────────────────────────
-// TODO: Replace this entire function with real model inference
-const TUMOR_CLASSES = ['glioma', 'meningioma', 'pituitary', 'no_tumor'];
+// ─── CHARGEMENT MODÈLE ONNX ───────────────────────────────────
+let session    = null;
+let modelReady = false;
 
-function simulateAnalysis(scanId, patientId) {
-  // Deterministic-ish result based on scanId hash so same scan = same result
-  const hash = scanId.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
-  const classIndex = hash % TUMOR_CLASSES.length;
-  const confidence = 65 + (hash % 30) + Math.random() * 5;
-
-  return {
-    requestId:         uuidv4(),
-    scanId,
-    patientId,
-    predictedClass:    TUMOR_CLASSES[classIndex],
-    confidence:        parseFloat(confidence.toFixed(1)),
-    // Segmentation mask path - replace with real mask generation
-    segmentationMaskPath: classIndex === 3 ? null : `/uploads/masks/placeholder_mask_${classIndex}.png`,
-    processingTimestamp: new Date().toISOString(),
-    inferenceVersion:  INFERENCE_VERSION,
-    modelNote:         'PLACEHOLDER - awaiting real model integration'
-  };
+async function loadModel() {
+  console.log(`[AI] Chargement ONNX : ${MODEL_PATH}`);
+  if (!fs.existsSync(MODEL_PATH)) {
+    console.error('[AI] ❌ Fichier ONNX introuvable :', MODEL_PATH);
+    return;
+  }
+  session = await ort.InferenceSession.create(MODEL_PATH, {
+    executionProviders: ['cpu'],
+    graphOptimizationLevel: 'all',
+  });
+  modelReady = true;
+  console.log('[AI] ✅ Modèle chargé —', session.inputNames, '→', session.outputNames);
 }
 
-// ─── REST API ENDPOINTS ───────────────────────────────────────
+// ─── PREPROCESSING ────────────────────────────────────────────
+async function preprocessImage(filePath) {
+  const img = await Jimp.read(filePath);
+  img.resize(IMG_SIZE, IMG_SIZE);
 
-/**
- * POST /api/ai/analyze
- * INPUT CONTRACT:
- * {
- *   scanId: string,          // UUID of the MRI scan
- *   patientId: string,       // UUID of the patient
- *   filePath: string,        // Server path to the MRI file
- *   metadata: {              // Optional scan metadata
- *     scanDate: string,
- *     scanType: string,
- *     doctorNotes: string
- *   }
- * }
- *
- * OUTPUT CONTRACT:
- * {
- *   requestId: string,
- *   scanId: string,
- *   patientId: string,
- *   predictedClass: 'glioma'|'meningioma'|'pituitary'|'no_tumor',
- *   confidence: number (0-100),
- *   segmentationMaskPath: string|null,
- *   processingTimestamp: string (ISO),
- *   inferenceVersion: string,
- *   modelNote: string
- * }
- */
-app.post('/api/ai/analyze', authenticate, requireDoctor, (req, res) => {
-  const { scanId, patientId, filePath, metadata } = req.body;
+  const data = new Float32Array(3 * IMG_SIZE * IMG_SIZE);
+  img.scan(0, 0, IMG_SIZE, IMG_SIZE, (x, y, idx) => {
+    const r  = img.bitmap.data[idx]     / 255;
+    const g  = img.bitmap.data[idx + 1] / 255;
+    const b  = img.bitmap.data[idx + 2] / 255;
+    const px = y * IMG_SIZE + x;
+    data[0 * IMG_SIZE * IMG_SIZE + px] = (r - MEAN[0]) / STD[0];
+    data[1 * IMG_SIZE * IMG_SIZE + px] = (g - MEAN[1]) / STD[1];
+    data[2 * IMG_SIZE * IMG_SIZE + px] = (b - MEAN[2]) / STD[2];
+  });
 
-  if (!scanId || !patientId) {
-    return res.status(400).json({ error: 'scanId and patientId are required' });
+  return new ort.Tensor('float32', data, [1, 3, IMG_SIZE, IMG_SIZE]);
+}
+
+// ─── SAUVEGARDE MASQUE PNG ────────────────────────────────────
+async function saveMaskPng(maskData, maskFileName) {
+  const imgOut = new Jimp(IMG_SIZE, IMG_SIZE);
+  for (let y = 0; y < IMG_SIZE; y++) {
+    for (let x = 0; x < IMG_SIZE; x++) {
+      const logit = maskData[y * IMG_SIZE + x];
+      const prob  = 1 / (1 + Math.exp(-logit));
+      const pixel = prob >= 0.5 ? 255 : 0;
+      imgOut.setPixelColor(Jimp.rgbaToInt(pixel, pixel, pixel, 255), x, y);
+    }
   }
+  if (!fs.existsSync(MASKS_DIR)) fs.mkdirSync(MASKS_DIR, { recursive: true });
+  const outPath = path.join(MASKS_DIR, maskFileName);
+  await imgOut.writeAsync(outPath);
+  return outPath;
+}
 
-  // Simulate processing delay (50-200ms)
-  const delay = 50 + Math.random() * 150;
-  setTimeout(() => {
-    const result = simulateAnalysis(scanId, patientId);
-    console.log(`[AI Service] Analysis completed: ${result.predictedClass} (${result.confidence}%)`);
-    res.json(result);
-  }, delay);
+// ─── INFÉRENCE PRINCIPALE ─────────────────────────────────────
+async function runInference(scanId, filePath) {
+  const fullPath = path.isAbsolute(filePath)
+    ? filePath
+    : path.join(UPLOADS_DIR, path.basename(filePath));
+
+  if (!fs.existsSync(fullPath)) throw new Error(`Image introuvable : ${fullPath}`);
+
+  const inputTensor = await preprocessImage(fullPath);
+
+  const t0      = Date.now();
+  const results = await session.run({ input: inputTensor });
+  console.log(`[AI] Inférence : ${Date.now() - t0}ms`);
+
+  // Classification — softmax
+  const clsLogits = Array.from(results['classification'].data);
+  const expVals   = clsLogits.map(Math.exp);
+  const expSum    = expVals.reduce((a, b) => a + b, 0);
+  const probs     = expVals.map(e => e / expSum);
+  const bestIdx   = probs.indexOf(Math.max(...probs));
+
+  const predictedClass = CLASSES[bestIdx];
+  const confidence     = parseFloat((probs[bestIdx] * 100).toFixed(2));
+
+  // Segmentation — sauvegarde masque
+  const maskFileName       = `mask_${scanId}_${Date.now()}.png`;
+  await saveMaskPng(results['segmentation'].data, maskFileName);
+  const segmentationMaskPath = `/uploads/masks/${maskFileName}`;
+
+  return { predictedClass, confidence, segmentationMaskPath };
+}
+
+// ─── ENDPOINTS ────────────────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({ status: 'healthy', service: 'ai-service', modelReady, timestamp: new Date().toISOString() });
 });
 
-/**
- * GET /api/ai/status
- * Returns model status and version info
- */
 app.get('/api/ai/status', (req, res) => {
   res.json({
-    status: 'ready',
-    mode: 'placeholder',
+    status          : modelReady ? 'ready' : 'loading',
     inferenceVersion: INFERENCE_VERSION,
-    supportedClasses: TUMOR_CLASSES,
-    message: 'Placeholder AI service running. Awaiting real model integration.',
-    timestamp: new Date().toISOString()
+    supportedClasses: CLASSES,
+    timestamp       : new Date().toISOString()
   });
 });
 
-app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', service: 'ai-service', mode: 'placeholder', timestamp: new Date().toISOString() });
+app.post('/api/ai/analyze', authenticate, requireDoctor, async (req, res) => {
+  if (!modelReady) return res.status(503).json({ error: 'Modèle en cours de chargement.' });
+
+  const { scanId, patientId, filePath, metadata } = req.body;
+  if (!scanId || !patientId) return res.status(400).json({ error: 'scanId et patientId sont requis.' });
+
+  try {
+    const { predictedClass, confidence, segmentationMaskPath } = await runInference(scanId, filePath);
+    console.log(`[AI] ✅ ${scanId} → ${predictedClass} (${confidence}%)`);
+    return res.json({
+      requestId           : uuidv4(),
+      scanId,
+      patientId,
+      predictedClass,
+      confidence,
+      segmentationMaskPath,
+      processingTimestamp : new Date().toISOString(),
+      inferenceVersion    : INFERENCE_VERSION,
+    });
+  } catch (err) {
+    console.error('[AI] ❌', err.message);
+    return res.status(500).json({ error: err.message });
+  }
 });
 
 // ─── RABBITMQ CONSUMER ────────────────────────────────────────
-// Listens for AI processing requests from MRI service
 async function startRabbitMQConsumer() {
-  const url = process.env.RABBITMQ_URL || 'amqp://neuroscan:neuroscan_pass@localhost:5672/neuroscan_vhost';
   let retries = 15;
-
   while (retries > 0) {
     try {
-      const conn = await amqplib.connect(url);
-      const ch = await conn.createChannel();
-      const queue = 'neuroscan.ai.process';
-
-      await ch.assertQueue(queue, { durable: true });
+      const conn    = await amqplib.connect(RABBITMQ_URL);
+      const ch      = await conn.createChannel();
+      await ch.assertQueue('neuroscan.ai.process', { durable: true });
       ch.prefetch(1);
+      console.log('[AI] ✅ RabbitMQ — écoute sur neuroscan.ai.process');
 
-      console.log('[AI Service] Listening for AI process requests...');
-
-      ch.consume(queue, async (msg) => {
+      ch.consume('neuroscan.ai.process', async (msg) => {
         if (!msg) return;
+        let payload;
+        try { payload = JSON.parse(msg.content.toString()); }
+        catch { ch.nack(msg, false, false); return; }
+
+        const { scanId, patientId, filePath } = payload;
+        console.log(`[RMQ] Message reçu → scanId=${scanId}`);
+
         try {
-          const event = JSON.parse(msg.content.toString());
-          console.log('[AI Service] Processing scan:', event.scanId);
-
-          // Simulate analysis
-          const result = simulateAnalysis(event.scanId, event.patientId);
-
-          // TODO: Store result in database
-          // TODO: Publish result to notification queue
-
-          console.log(`[AI Service] Queue analysis: ${result.predictedClass}`);
+          const result = await runInference(scanId, filePath);
+          ch.sendToQueue(
+            'neuroscan.notification',
+            Buffer.from(JSON.stringify({
+              type: 'ai_analysis_complete',
+              scanId, patientId, ...result,
+              processingTimestamp: new Date().toISOString(),
+              inferenceVersion   : INFERENCE_VERSION,
+            })),
+            { persistent: true }
+          );
           ch.ack(msg);
+          console.log(`[RMQ] ✅ ${scanId} → ${result.predictedClass} (${result.confidence}%)`);
         } catch (err) {
-          console.error('[AI Service] Consumer error:', err.message);
-          ch.nack(msg, false, false); // Send to DLX
+          console.error('[RMQ] ❌', err.message);
+          ch.nack(msg, false, true);
         }
       });
-
       return;
     } catch (err) {
       retries--;
-      console.log(`[AI Service] RabbitMQ connect failed (${retries} left): ${err.message}`);
+      console.log(`[AI] RabbitMQ retry (${retries} left): ${err.message}`);
       await new Promise(r => setTimeout(r, 8000));
     }
   }
 }
 
-// ─── CONSUL REGISTRATION ──────────────────────────────────────
+// ─── CONSUL ───────────────────────────────────────────────────
 async function registerWithConsul() {
   const consul = new Consul({
     host: process.env.CONSUL_HOST || 'localhost',
@@ -184,23 +228,23 @@ async function registerWithConsul() {
   const host = process.env.SERVICE_HOST || 'localhost';
   try {
     await consul.agent.service.register({
-      id: `ai-service-${host}-${PORT}`,
-      name: 'ai-service',
+      id     : `ai-service-${host}-${PORT}`,
+      name   : 'ai-service',
       address: host,
-      port: parseInt(PORT),
-      tags: ['neuroscan', 'ai-service', 'placeholder'],
-      check: { http: `http://${host}:${PORT}/health`, interval: '15s', timeout: '5s' }
+      port   : parseInt(PORT),
+      tags   : ['neuroscan', 'ai-service'],
+      check  : { http: `http://${host}:${PORT}/health`, interval: '15s', timeout: '5s' }
     });
-    console.log('[Consul] ai-service registered');
+    console.log('[Consul] ai-service enregistré ✓');
   } catch (err) {
-    console.error('[Consul] Registration failed:', err.message);
+    console.error('[Consul] Échec enregistrement :', err.message);
   }
 }
 
-// ─── START ────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`[AI Service] Placeholder running on port ${PORT}`);
-  console.log(`[AI Service] IMPORTANT: Replace simulateAnalysis() with real model`);
+// ─── DÉMARRAGE ────────────────────────────────────────────────
+app.listen(PORT, async () => {
+  console.log(`[AI] 🚀 Démarré sur le port ${PORT}`);
+  await loadModel();
   registerWithConsul();
   startRabbitMQConsumer();
 });
