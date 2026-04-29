@@ -14,17 +14,19 @@ const fs           = require('fs');
 
 const app  = express();
 const PORT = process.env.PORT || 3004;
-const JWT_SECRET       = process.env.JWT_SECRET || 'neuroscan_super_secret_jwt_key_2025';
-const INFERENCE_VERSION = 'v1.0.0';
-const RABBITMQ_URL     = process.env.RABBITMQ_URL || 'amqp://neuroscan:neuroscan_pass@localhost:5672/neuroscan_vhost';
-const UPLOADS_DIR      = process.env.UPLOADS_DIR  || '/uploads';
-const MASKS_DIR        = path.join(UPLOADS_DIR, 'masks');
-const MODEL_PATH       = path.join(__dirname, '..', 'models', 'multitask_brain.onnx');
+const JWT_SECRET        = process.env.JWT_SECRET || 'neuroscan_super_secret_jwt_key_2025';
+const INFERENCE_VERSION = 'v2.0.0';
+const RABBITMQ_URL      = process.env.RABBITMQ_URL || 'amqp://neuroscan:neuroscan_pass@localhost:5672/neuroscan_vhost';
+const UPLOADS_DIR       = process.env.UPLOADS_DIR  || '/uploads';
+const MASKS_DIR         = path.join(UPLOADS_DIR, 'masks');
 
+// ─── DUAL MODEL PATHS ─────────────────────────────────────────
+const MULTITASK_MODEL_PATH = path.join(__dirname, '..', 'models', 'multitask_fixed.onnx');
 const IMG_SIZE = 256;
-const CLASSES  = ['glioma', 'meningioma', 'notumor', 'pituitary'];
-const MEAN     = [0.485, 0.456, 0.406];
-const STD      = [0.229, 0.224, 0.225];
+
+const CLASSES = ['glioma', 'meningioma', 'no_tumor', 'pituitary'];
+const MEAN    = [0.485, 0.456, 0.406];
+const STD     = [0.229, 0.224, 0.225];
 
 app.use(helmet());
 app.use(cors({ origin: '*' }));
@@ -46,44 +48,48 @@ function requireDoctor(req, res, next) {
   next();
 }
 
-// ─── CHARGEMENT MODÈLE ONNX ───────────────────────────────────
-let session    = null;
+// ─── CHARGEMENT MODÈLES ONNX ──────────────────────────────────
+
 let modelReady = false;
 
+let session = null;
+
 async function loadModel() {
-  console.log(`[AI] Chargement ONNX : ${MODEL_PATH}`);
-  if (!fs.existsSync(MODEL_PATH)) {
-    console.error('[AI] ❌ Fichier ONNX introuvable :', MODEL_PATH);
+  if (!fs.existsSync(MULTITASK_MODEL_PATH)) {
+    console.error('[AI] ❌ Fichier ONNX introuvable :', MULTITASK_MODEL_PATH);
     return;
   }
-  session = await ort.InferenceSession.create(MODEL_PATH, {
+  console.log('[AI] Chargement modèle multitask :', MULTITASK_MODEL_PATH);
+  session = await ort.InferenceSession.create(MULTITASK_MODEL_PATH, {
     executionProviders: ['cpu'],
     graphOptimizationLevel: 'all',
   });
   modelReady = true;
-  console.log('[AI] ✅ Modèle chargé —', session.inputNames, '→', session.outputNames);
+  console.log('[AI] ✅ Multitask :', session.inputNames, '→', session.outputNames);
 }
 
 // ─── PREPROCESSING ────────────────────────────────────────────
-async function preprocessImage(filePath) {
+// imgSize est passé en paramètre car CLS=224 et SEG=256
+async function preprocessImage(filePath, imgSize) {
   const img = await Jimp.read(filePath);
-  img.resize(IMG_SIZE, IMG_SIZE);
+  img.resize(imgSize, imgSize);
 
-  const data = new Float32Array(3 * IMG_SIZE * IMG_SIZE);
-  img.scan(0, 0, IMG_SIZE, IMG_SIZE, (x, y, idx) => {
+  const data = new Float32Array(3 * imgSize * imgSize);
+  img.scan(0, 0, imgSize, imgSize, (x, y, idx) => {
     const r  = img.bitmap.data[idx]     / 255;
     const g  = img.bitmap.data[idx + 1] / 255;
     const b  = img.bitmap.data[idx + 2] / 255;
-    const px = y * IMG_SIZE + x;
-    data[0 * IMG_SIZE * IMG_SIZE + px] = (r - MEAN[0]) / STD[0];
-    data[1 * IMG_SIZE * IMG_SIZE + px] = (g - MEAN[1]) / STD[1];
-    data[2 * IMG_SIZE * IMG_SIZE + px] = (b - MEAN[2]) / STD[2];
+    const px = y * imgSize + x;
+    data[0 * imgSize * imgSize + px] = (r - MEAN[0]) / STD[0];
+    data[1 * imgSize * imgSize + px] = (g - MEAN[1]) / STD[1];
+    data[2 * imgSize * imgSize + px] = (b - MEAN[2]) / STD[2];
   });
 
-  return new ort.Tensor('float32', data, [1, 3, IMG_SIZE, IMG_SIZE]);
+  return new ort.Tensor('float32', data, [1, 3, imgSize, imgSize]);
 }
 
 // ─── SAUVEGARDE MASQUE PNG ────────────────────────────────────
+
 async function saveMaskPng(maskData, maskFileName) {
   const imgOut = new Jimp(IMG_SIZE, IMG_SIZE);
   for (let y = 0; y < IMG_SIZE; y++) {
@@ -108,14 +114,16 @@ async function runInference(scanId, filePath) {
 
   if (!fs.existsSync(fullPath)) throw new Error(`Image introuvable : ${fullPath}`);
 
-  const inputTensor = await preprocessImage(fullPath);
+  // ── Preprocessing unique 256×256 ────────────────────────────
+  const tensor = await preprocessImage(fullPath, IMG_SIZE);
 
+  // ── Inférence multitask ──────────────────────────────────────
   const t0      = Date.now();
-  const results = await session.run({ input: inputTensor });
-  console.log(`[AI] Inférence : ${Date.now() - t0}ms`);
+  const results = await session.run({ input: tensor });
+  console.log(`[AI] Inférence multitask : ${Date.now() - t0}ms`);
 
-  // Classification — softmax
-  const clsLogits = Array.from(results['classification'].data);
+  // ── Classification ───────────────────────────────────────────
+  const clsLogits = Array.from(results['cls_output'].data);
   const expVals   = clsLogits.map(Math.exp);
   const expSum    = expVals.reduce((a, b) => a + b, 0);
   const probs     = expVals.map(e => e / expSum);
@@ -123,11 +131,18 @@ async function runInference(scanId, filePath) {
 
   const predictedClass = CLASSES[bestIdx];
   const confidence     = parseFloat((probs[bestIdx] * 100).toFixed(2));
+  console.log(`[AI] → ${predictedClass} (${confidence}%)`);
 
-  // Segmentation — sauvegarde masque
-  const maskFileName       = `mask_${scanId}_${Date.now()}.png`;
-  await saveMaskPng(results['segmentation'].data, maskFileName);
-  const segmentationMaskPath = `/uploads/masks/${maskFileName}`;
+  // ── Segmentation — skippée si no_tumor ───────────────────────
+  let segmentationMaskPath = null;
+
+  if (predictedClass !== 'no_tumor') {
+    const maskFileName = `mask_${scanId}_${Date.now()}.png`;
+    await saveMaskPng(results['seg_output'].data, maskFileName);
+    segmentationMaskPath = `/uploads/masks/${maskFileName}`;
+  } else {
+    console.log('[AI] no_tumor détecté — segmentation skippée');
+  }
 
   return { predictedClass, confidence, segmentationMaskPath };
 }
@@ -176,10 +191,10 @@ async function startRabbitMQConsumer() {
   let retries = 15;
   while (retries > 0) {
     try {
-      const conn    = await amqplib.connect(RABBITMQ_URL);
-      const ch      = await conn.createChannel();
+      const conn = await amqplib.connect(RABBITMQ_URL);
+      const ch   = await conn.createChannel();
       await ch.assertQueue('neuroscan.ai.process', { durable: true });
-      ch.prefetch(1);
+      ch.prefetch(1);   // une seule inférence à la fois (CPU)
       console.log('[AI] ✅ RabbitMQ — écoute sur neuroscan.ai.process');
 
       ch.consume('neuroscan.ai.process', async (msg) => {
@@ -207,7 +222,7 @@ async function startRabbitMQConsumer() {
           console.log(`[RMQ] ✅ ${scanId} → ${result.predictedClass} (${result.confidence}%)`);
         } catch (err) {
           console.error('[RMQ] ❌', err.message);
-          ch.nack(msg, false, true);
+          ch.nack(msg, false, true);   // requeue en cas d'erreur
         }
       });
       return;

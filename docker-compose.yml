@@ -195,9 +195,10 @@ services:
       - CONSUL_PORT=8500
       - SERVICE_NAME=ai-service
       - SERVICE_HOST=ai-service
-      - UPLOADS_DIR=/uploads              # ← ajouté
+      - UPLOADS_DIR=/uploads
     volumes:
-      - mri_uploads:/uploads              # ← ajouté
+      - mri_uploads:/uploads
+      
     depends_on:
       rabbitmq:
         condition: service_healthy
