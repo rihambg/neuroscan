@@ -367,15 +367,7 @@ cd frontend && npm install && npm start
 
 ---
 
-## Team
 
-| Role | Responsibility |
-|---|---|
-| You | Backend + Frontend (this repo) |
-| Friend 1 | Deep learning model → replace `ai-service/src/index.js` |
-| Friend 2 | DevOps/deployment → use `docker-compose.yml` |
-| Friend 3 | Database + testing → see `database/migrations/` |
-| Friend 4 | Documentation → see this README + `/docs` |
 
 ---
 
