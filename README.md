@@ -70,35 +70,34 @@ Frontend  Auth Svc  Business   MRI Svc   AI Svc  Notif Svc
 
 ---
 
-##  the AI Model 
+## The AI Model
 
-# NeuroScan — Intégration AI Service 🧠
-
-
----
-
-
-Le `ai-service` utilise un  modèle de Deep Learning (ONNX) qui :
-- **Classifie** l'IRM en 4 classes : `glioma`, `meningioma`, `notumor`, `pituitary`
-- **Segmente** la tumeur et génère un masque PNG binaire
-
+NeuroScan — AI Service Integration 🧠
 
 ---
 
-## Fichiers reçus
+The ai-service uses a Deep Learning model (ONNX) that:
 
-| Fichier | Destination dans le projet |
-|---|---|
-| `multitask_brain.onnx` | `backend/ai-service/models/multitask_brain.onnx` |
+- Classifies MRI scans into 4 classes: glioma, meningioma, notumor, pituitary
+- Segments the tumor and generates a binary PNG mask
+
+---
+
+## Received Files
+
+| File                        | Destination in the project                            |
+| --------------------------- | ----------------------------------------------------- |
+| `multitask_brain.onnx`      | `backend/ai-service/models/multitask_brain.onnx`      |
 | `multitask_brain.onnx.data` | `backend/ai-service/models/multitask_brain.onnx.data` |
-| `index.js` | `backend/ai-service/src/index.js` |
-| `package.json` | `backend/ai-service/package.json` |
+| `index.js`                  | `backend/ai-service/src/index.js`                     |
+| `package.json`              | `backend/ai-service/package.json`                     |
 
-> ⚠️ Les deux fichiers `.onnx` et `.onnx.data` doivent **obligatoirement** être dans le même dossier `models/`. Ne les sépare pas.
+
+> ⚠️ The .onnx and .onnx.data files must both be in the same models/ folder. Do not separate them.
 
 ---
 
-## Structure finale du dossier ai-service
+## Final Folder Structure
 
 ```
 backend/
@@ -123,22 +122,22 @@ npm install
 
 ---
 
-## Lancer le projet complet
+## Run the Full Project
 
 ```bash
-# À la racine du projet NeuroScan
+# From the root of the NeuroScan project
 docker-compose up -d
 ```
 
 ---
 
-## Vérifier que l'AI service fonctionne
+## Verify AI Service
 
-### 1. Statut du modèle
+### 1. Model Status
 ```bash
 curl http://localhost:3004/api/ai/status
 ```
-Réponse attendue :
+Expected response:
 ```json
 {
   "status": "ready",
@@ -146,13 +145,13 @@ Réponse attendue :
   "supportedClasses": ["glioma", "meningioma", "notumor", "pituitary"]
 }
 ```
-> Si tu vois `"status": "loading"` — attends 10-15 secondes et réessaie, le modèle est en cours de chargement.
+> If `"status": "loading"` appears, wait 10–15 seconds and retry.
 
-### 2. Health check
+### 2. Health Check
 ```bash
 curl http://localhost:3004/health
 ```
-Réponse attendue :
+Expected response:
 ```json
 {
   "status": "healthy",
@@ -161,19 +160,19 @@ Réponse attendue :
 }
 ```
 
-### 3. Test d'analyse (nécessite un token JWT doctor)
+### 3. Analysis Test (requires JWT token)
 ```bash
 curl -X POST http://localhost:3004/api/ai/analyze \
   -H "Content-Type: application/json" \
-  -H "Authorization: Bearer TON_TOKEN_JWT" \
+  -H "Authorization: Bearer YOUR_JWT_TOKEN" \
   -d '{
     "scanId": "test-scan-001",
     "patientId": "test-patient-001",
-    "filePath": "/uploads/une_irm.jpg",
+    "filePath": "/uploads/an_mri.jpg",
     "metadata": {}
   }'
 ```
-Réponse attendue :
+Expected response:
 ```json
 {
   "requestId": "uuid",
@@ -189,10 +188,9 @@ Réponse attendue :
 
 ---
 
-## Comment obtenir un token JWT pour tester
+## Get a JWT Token
 
-Lance le projet, puis connecte-toi avec le compte médecin :
-this curl is for linux
+This curl command is for Linux:
 ```bash
 curl -X POST http://localhost/api/auth/login \
   -H "Content-Type: application/json" \
@@ -202,68 +200,60 @@ curl -X POST http://localhost/api/auth/login \
   }'
 ```
 
-Copie le token JWT dans la réponse et utilise-le dans le header `Authorization: Bearer <token>`.
+---
+
+## How It Works
+
+```
+MRI Image
+   ↓
+Resize 256×256 + ImageNet normalization
+   ↓
+ONNX Model (EfficientNet-B4 + U-Net + scSE)
+   ↓
+┌──────────────────────────────┐
+│ Segmentation (1,1,256,256)  │ → sigmoid → threshold 0.5 → PNG mask
+│ Classification (1,4)        │ → softmax → class + confidence
+└──────────────────────────────┘
+```
 
 ---
 
-## Comment ça marche (pour comprendre)
+## Common Issues
 
+### The model does not load
 ```
-Image IRM reçue
-      ↓
-Resize 256×256 + Normalisation ImageNet
-      ↓
-Modèle ONNX (EfficientNet-B4 + U-Net + scSE)
-      ↓
-   ┌──────────────────────────────┐
-   │  Segmentation (1, 1, 256, 256) │  → sigmoid → seuil 0.5 → masque PNG
-   │  Classification (1, 4)         │  → softmax → classe + confiance
-   └──────────────────────────────┘
+[AI] ONNX file not found
 ```
+→ Make sure `multitask_brain.onnx` AND `multitask_brain.onnx.data` are both in `backend/ai-service/models/`
 
-Le modèle a été entraîné sur le dataset **BRISC 2025** (6000 IRM cérébrales) avec les résultats suivants :
-- Test Dice Score : **0.8699**
-- Test Accuracy   : **97.9%**
-
----
-
-## Problèmes fréquents
-
-### Le modèle ne se charge pas
-```
-[AI]  Fichier ONNX introuvable
-```
-→ Vérifie que `multitask_brain.onnx` ET `multitask_brain.onnx.data` sont bien dans `backend/ai-service/models/`
-
-### Erreur 503 sur /api/ai/analyze
+### 503 error on /api/ai/analyze
 ```json
-{ "error": "Modèle en cours de chargement." }
+{ "error": "Model is loading." }
 ```
-→ Le modèle met ~10 secondes à charger au démarrage. Attends et réessaie.
+→ The model takes ~10 seconds to load on startup. Wait and retry.
 
-### Erreur sur l'image
+### Image error
 ```
-Image introuvable : /uploads/xxx.jpg
+Image not found: /uploads/xxx.jpg
 ```
-→ Le `filePath` envoyé dans la requête doit correspondre à un fichier réellement présent dans le volume Docker `/uploads/`.
+→ The `filePath` sent in the request must correspond to a file actually present in the Docker volume `/uploads/`.
 
-### RabbitMQ ne se connecte pas
-→ Normal au démarrage, le service retry automatiquement 15 fois toutes les 8 secondes. Vérifie que RabbitMQ est bien lancé avec `docker-compose ps`.
+### RabbitMQ fails to connect
+→ This is normal at startup — the service automatically retries 15 times every 8 seconds. Check that RabbitMQ is running with `docker-compose ps`.
 
 ---
 
-## Variables d'environnement (optionnel)
+## Environment Variables (optional)
 
-Toutes ont des valeurs par défaut, mais peuvent être surchargées dans `docker-compose.yml` :
+All have default values, but can be overridden in `docker-compose.yml`:
 
-| Variable | Défaut | Description |
+| Variable | Default | Description |
 |---|---|---|
-| `PORT` | `3004` | Port du service |
-| `RABBITMQ_URL` | `amqp://neuroscan:neuroscan_pass@...` | URL RabbitMQ |
-| `UPLOADS_DIR` | `/uploads` | Dossier des IRM uploadées |
-| `JWT_SECRET` | `neuroscan_super_secret_jwt_key_2025` | Clé JWT |
-
----
+| `PORT` | `3004` | Service port |
+| `RABBITMQ_URL` | `amqp://neuroscan:neuroscan_pass@...` | RabbitMQ URL |
+| `UPLOADS_DIR` | `/uploads` | MRI upload directory |
+| `JWT_SECRET` | `neuroscan_super_secret_jwt_key_2025` | JWT key |
 
 ---
 
@@ -364,10 +354,6 @@ cd backend/notification-service && npm install && npm run dev
 # 7. Frontend
 cd frontend && npm install && npm start
 ```
-
----
-
-
 
 ---
 
