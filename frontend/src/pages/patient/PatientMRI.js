@@ -1,4 +1,4 @@
-// NeuroScan - Patient MRI Upload & History
+// NeuroScan - Patient MRI upload & history
 import React, { useState, useEffect, useCallback } from 'react';
 import AppLayout from '../../components/common/AppLayout';
 import StatusBadge from '../../components/common/StatusBadge';

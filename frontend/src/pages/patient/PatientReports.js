@@ -1,4 +1,4 @@
-// NeuroScan - Patient Reports Page
+// NeuroScan - Patient reports page
 import React, { useState, useEffect } from 'react';
 import AppLayout from '../../components/common/AppLayout';
 import StatusBadge from '../../components/common/StatusBadge';

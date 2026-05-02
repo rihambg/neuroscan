@@ -1,4 +1,4 @@
-// Business Service - Link Requests Controller (FIXED)
+// Business Service - Link Requests Controller 
 const { getPool } = require('../../config/database');
 const { publishEvent, QUEUES } = require('../../config/rabbitmq');
 
@@ -11,7 +11,7 @@ async function sendRequest(req, res) {
 
     if (!targetId) return res.status(400).json({ error: 'targetId is required' });
 
-    // Verify target user exists
+    // Verify target user exists kbel 
     const targetUser = await pool.query('SELECT id, role FROM users WHERE id = $1', [targetId]);
     if (!targetUser.rows.length) return res.status(404).json({ error: 'Target user not found' });
 

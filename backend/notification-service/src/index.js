@@ -1,5 +1,4 @@
 // NeuroScan Notification Service
-// Consumes RabbitMQ events → writes to DB → pushes via SSE
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
@@ -20,7 +19,7 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST', 'DELETE', 'OPTIONS'] }));
 app.use(express.json());
 app.use(morgan('combined'));
 
-// ─── DB ──────────────────────────────────────────────────────
+// DB 
 let pool;
 async function connectDB() {
   pool = new Pool({
@@ -35,7 +34,7 @@ async function connectDB() {
   }
 }
 
-// ─── SSE CLIENT REGISTRY ─────────────────────────────────────
+// SSE CLIENT REGISTRY 
 const sseClients = new Map(); // userId -> [res, ...]
 
 function addSSEClient(userId, res) {
@@ -57,7 +56,7 @@ function pushToUser(userId, data) {
   clients.forEach(res => { try { res.write(payload); } catch (e) {} });
 }
 
-// ─── AUTH MIDDLEWARE ──────────────────────────────────────────
+// AUTH MIDDLEWARE 
 function authenticate(req, res, next) {
   const authHeader = req.headers['authorization'];
   if (!authHeader?.startsWith('Bearer ')) return res.status(401).json({ error: 'No token' });
@@ -65,7 +64,7 @@ function authenticate(req, res, next) {
   catch { res.status(401).json({ error: 'Invalid token' }); }
 }
 
-// ─── NOTIFICATION TITLE/MESSAGE TEMPLATES ────────────────────
+//  NOTIFICATION TITLE/MESSAGE TEMPLATES 
 const NOTIF_TEMPLATES = {
   connection_request_sent:     { title: 'New Connection Request',    message: 'A new connection request has been sent to you.' },
   connection_request_accepted: { title: 'Request Accepted',          message: 'Your connection request has been accepted.' },
@@ -95,7 +94,7 @@ async function createNotification(userId, type, data = {}) {
   }
 }
 
-// ─── REST ROUTES ──────────────────────────────────────────────
+// REST ROUTES 
 
 // SSE stream endpoint
 app.get('/api/notifications/stream', authenticate, (req, res) => {
@@ -160,7 +159,7 @@ app.get('/health', (req, res) =>
   res.json({ status: 'healthy', service: 'notification-service', timestamp: new Date().toISOString() })
 );
 
-// ─── RABBITMQ CONSUMER ────────────────────────────────────────
+// RABBITMQ CONSUMER 
 async function startConsumer() {
   const url = process.env.RABBITMQ_URL || 'amqp://neuroscan:neuroscan_pass@localhost:5672/neuroscan_vhost';
   let retries = 15;
@@ -209,7 +208,7 @@ async function startConsumer() {
   console.warn('[Notif] Could not connect to RabbitMQ');
 }
 
-// ─── CONSUL ──────────────────────────────────────────────────
+// CONSUL
 async function registerWithConsul() {
   const consul = new Consul({ host: process.env.CONSUL_HOST || 'localhost', port: parseInt(process.env.CONSUL_PORT) || 8500 });
   const host = process.env.SERVICE_HOST || 'localhost';
@@ -222,7 +221,7 @@ async function registerWithConsul() {
   } catch (e) { console.error('[Consul] Registration failed:', e.message); }
 }
 
-// ─── START ────────────────────────────────────────────────────
+// START 
 async function start() {
   await connectDB();
   await startConsumer();

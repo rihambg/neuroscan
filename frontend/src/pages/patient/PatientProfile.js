@@ -1,4 +1,4 @@
-// NeuroScan - Patient Profile Page
+// NeuroScan - Patient profile page
 import React, { useState, useEffect } from 'react';
 import AppLayout from '../../components/common/AppLayout';
 import { patientApi } from '../../services/api';

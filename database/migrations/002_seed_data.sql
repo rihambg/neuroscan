@@ -1,5 +1,5 @@
 -- NeuroScan Seed Data (FIXED - uses pgcrypto for correct bcrypt hashes)
--- Password for ALL demo accounts: Password123!
+-- Password for ALL demo accounts: Password123! (with exlamation mark machi ana zedtha for the sentence lol)
 
 INSERT INTO users (id, email, password_hash, role, first_name, last_name, phone, gender) VALUES
   ('11111111-1111-1111-1111-111111111101', 'dr.martin@neuroscan.com',

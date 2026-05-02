@@ -1,7 +1,7 @@
-// NeuroScan - Theme & Language Context
+// NeuroScan - Theme & Language Context (this still needs a lot of work but we don't have time for it, sorry!)
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
-// ─── Translations ─────────────────────────────────
+// Translations 
 const TRANSLATIONS = {
   en: {
     // Nav

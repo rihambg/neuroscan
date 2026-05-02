@@ -1,4 +1,4 @@
-// Business Service - Doctor Controller (FIXED)
+// Business Service - Doctor Controller 
 const { getPool } = require('../../config/database');
 
 async function listDoctors(req, res) {

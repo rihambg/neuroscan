@@ -28,12 +28,12 @@ const loginRules = [
   body('password').notEmpty().withMessage('Password required'),
 ];
 
-// ─── Public Routes ────────────────────────────────────────────────
+// Public Routes 
 router.post('/register', registerRules, validate, register);
 router.post('/login', loginRules, validate, login);
 router.post('/validate', validateToken);
 
-// ─── Protected Routes ─────────────────────────────────────────────
+// Protected Routes 
 router.get('/me', authenticate, me);
 router.post('/create-patient', authenticate, requireRole('doctor'), createPatientAccount);
 

@@ -12,7 +12,7 @@ volumes:
 
 services:
 
-  # ─── Infrastructure ────────────────────────────────────────────────
+  # Infrastructure
 
   postgres:
     image: postgres:15-alpine
@@ -73,7 +73,7 @@ services:
       timeout: 5s
       retries: 5
 
-  # FIX: Traefik without Docker provider - use static file routing instead
+  # FIX: Traefik without Docker provider - use static file routing instead (FINALLY FIXED!!!!!!!!!!!!)
   # This avoids the Docker socket permission issue on Windows
   traefik:
     image: traefik:v2.10
@@ -92,7 +92,7 @@ services:
     networks:
       - neuroscan-net
 
-  # ─── Backend Microservices ─────────────────────────────────────────
+  # Backend Microservices 
 
   auth-service:
     build:
@@ -236,7 +236,7 @@ services:
     networks:
       - neuroscan-net
 
-  # ─── Frontend ──────────────────────────────────────────────────────
+  #  Frontend 
 
   frontend:
     build:

@@ -5,7 +5,7 @@ const { getPool } = require('../../config/database');
 const { publishEvent, QUEUES } = require('../../config/rabbitmq');
 const { UPLOAD_PATH } = require('../middleware/upload.middleware');
 
-// Try to generate thumbnail using sharp if available
+// Try to generate thumbnail using sharp if available (we can proceed meme bla biha)
 async function generateThumbnail(filePath, filename) {
   try {
     const sharp = require('sharp');
@@ -14,7 +14,7 @@ async function generateThumbnail(filePath, filename) {
     await sharp(filePath).resize(200, 200, { fit: 'inside' }).jpeg({ quality: 70 }).toFile(thumbPath);
     return `/uploads/thumbnails/${thumbName}`;
   } catch (e) {
-    return null; // thumbnail generation is optional
+    return null; 
   }
 }
 

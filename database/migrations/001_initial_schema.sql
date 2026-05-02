@@ -6,7 +6,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 
--- ─── ENUMS ────────────────────────────────────────────────────────────────────
+-- ENUMS 
 
 CREATE TYPE user_role AS ENUM ('doctor', 'patient');
 CREATE TYPE request_status AS ENUM ('pending', 'accepted', 'rejected', 'cancelled');
@@ -25,7 +25,7 @@ CREATE TYPE notification_type AS ENUM (
   'account_created_for_you'
 );
 
--- ─── USERS ────────────────────────────────────────────────────────────────────
+-- USERS
 
 CREATE TABLE users (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -44,7 +44,7 @@ CREATE TABLE users (
   updated_at    TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── DOCTORS ──────────────────────────────────────────────────────────────────
+-- DOCTORS 
 
 CREATE TABLE doctors (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -61,7 +61,7 @@ CREATE TABLE doctors (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── PATIENTS ─────────────────────────────────────────────────────────────────
+-- PATIENTS
 
 CREATE TABLE patients (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -78,7 +78,7 @@ CREATE TABLE patients (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── DOCTOR-PATIENT LINK REQUESTS ─────────────────────────────────────────────
+-- DOCTOR-PATIENT LINK REQUESTS 
 
 CREATE TABLE link_requests (
   id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -93,7 +93,7 @@ CREATE TABLE link_requests (
   UNIQUE(requester_id, target_id)
 );
 
--- ─── MRI SCANS ────────────────────────────────────────────────────────────────
+-- MRI SCANS 
 
 CREATE TABLE mri_scans (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -115,7 +115,7 @@ CREATE TABLE mri_scans (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── AI ANALYSIS RESULTS ──────────────────────────────────────────────────────
+-- AI ANALYSIS RESULTS 
 
 CREATE TABLE ai_analyses (
   id                  UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -130,7 +130,7 @@ CREATE TABLE ai_analyses (
   created_at          TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── DIAGNOSES ────────────────────────────────────────────────────────────────
+-- DIAGNOSES 
 
 CREATE TABLE diagnoses (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -149,7 +149,7 @@ CREATE TABLE diagnoses (
   updated_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── NOTIFICATIONS ────────────────────────────────────────────────────────────
+-- NOTIFICATIONS 
 
 CREATE TABLE notifications (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -162,7 +162,7 @@ CREATE TABLE notifications (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── ASYNC EVENT LOGS ─────────────────────────────────────────────────────────
+-- ASYNC EVENT LOGS 
 
 CREATE TABLE event_logs (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -174,7 +174,7 @@ CREATE TABLE event_logs (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── AUDIT LOGS ───────────────────────────────────────────────────────────────
+-- AUDIT LOGS
 
 CREATE TABLE audit_logs (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -187,7 +187,7 @@ CREATE TABLE audit_logs (
   created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
--- ─── INDEXES ──────────────────────────────────────────────────────────────────
+-- INDEXES 
 
 CREATE INDEX idx_users_email ON users(email);
 CREATE INDEX idx_users_role ON users(role);
@@ -209,7 +209,7 @@ CREATE INDEX idx_notifications_user ON notifications(user_id);
 CREATE INDEX idx_notifications_read ON notifications(user_id, is_read);
 CREATE INDEX idx_event_logs_type ON event_logs(event_type);
 
--- ─── TRIGGERS ─────────────────────────────────────────────────────────────────
+-- TRIGGERS 
 
 CREATE OR REPLACE FUNCTION update_updated_at()
 RETURNS TRIGGER AS $$

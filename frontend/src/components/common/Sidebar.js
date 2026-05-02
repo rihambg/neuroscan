@@ -1,4 +1,4 @@
-// NeuroScan - Sidebar with dark mode, language switcher, logout
+// NeuroScan 
 import React, { useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
