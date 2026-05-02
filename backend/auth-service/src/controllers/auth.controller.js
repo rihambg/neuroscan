@@ -1,4 +1,4 @@
-// Auth Service - Authentication Controller (FIXED)
+// Auth Service - Authentication Controller 
 const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const { getPool } = require('../../config/database');
@@ -33,7 +33,7 @@ async function register(req, res) {
       }
     }
 
-    // Hash with bcryptjs (for newly registered users)
+    // Hash with bcryptjs (for newly registered users brk)
     const passwordHash = await bcrypt.hash(password, 10);
     const userId = uuidv4();
 

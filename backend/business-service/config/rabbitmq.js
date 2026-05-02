@@ -1,4 +1,4 @@
-// Business Service - RabbitMQ Configuration (FIXED - no DLX to avoid PRECONDITION_FAILED)
+// Business Service - RabbitMQ Configuration (FIXED - Hopefully this way we won't get PRECONDITION_FAILED T-T)
 const amqplib = require('amqplib');
 
 let connection = null;
@@ -28,7 +28,7 @@ async function connectRabbitMQ() {
 
       console.log('[Business Service] RabbitMQ connected');
 
-      // Handle channel errors gracefully - do NOT let them crash the process
+      
       channel.on('error', (err) => {
         console.error('[RabbitMQ] Channel error (non-fatal):', err.message);
         channel = null;

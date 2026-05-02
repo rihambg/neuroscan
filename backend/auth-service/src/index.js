@@ -11,10 +11,10 @@ const { connectDB } = require('./config/database');
 const { registerWithConsul } = require('./config/consul');
 
 const app = express();
-app.set('trust proxy', 1); // Required behind Traefik/nginx
+app.set('trust proxy', 1); // required behind Traefik/nginx - Inchallah ca marche hed l mera 
 const PORT = process.env.PORT || 3001;
 
-// ─── Middleware ────────────────────────────────────────────────────
+// Middleware 
 app.use(helmet());
 app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'] }));
 app.use(express.json({ limit: '10mb' }));
@@ -29,7 +29,7 @@ const authLimiter = rateLimit({
 app.use('/api/auth/login', authLimiter);
 app.use('/api/auth/register', authLimiter);
 
-// ─── Routes ───────────────────────────────────────────────────────
+// Routes 
 app.use('/api/auth', authRoutes);
 
 // Health check endpoint
@@ -51,7 +51,7 @@ app.use((err, req, res, next) => {
   });
 });
 
-// ─── Start ────────────────────────────────────────────────────────
+// Start 
 async function start() {
   await connectDB();
   app.listen(PORT, () => {

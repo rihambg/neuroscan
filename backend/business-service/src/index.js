@@ -23,7 +23,7 @@ app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS']
 app.use(express.json({ limit: '10mb' }));
 app.use(morgan('combined'));
 
-// ─── Routes ───────────────────────────────────────────────────────
+// Routes
 app.use('/api/business/doctors', doctorRoutes);
 app.use('/api/business/patients', patientRoutes);
 app.use('/api/business/links', linkRoutes);

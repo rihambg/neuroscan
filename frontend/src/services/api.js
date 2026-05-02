@@ -6,7 +6,7 @@ const API_URL = process.env.REACT_APP_API_URL || 'http://localhost/api';
 // Create axios instance
 const api = axios.create({ baseURL: API_URL, timeout: 30000 });
 
-// ─── Request interceptor: inject JWT ─────────────────────────
+// Request interceptor: inject JWT
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('neuroscan_token');
@@ -16,7 +16,7 @@ api.interceptors.request.use(
   (error) => Promise.reject(error)
 );
 
-// ─── Response interceptor: handle 401 ────────────────────────
+// Response interceptor: handle 401 
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -29,7 +29,7 @@ api.interceptors.response.use(
   }
 );
 
-// ─── Auth Service ─────────────────────────────────────────────
+// Auth Service 
 export const authApi = {
   register: (data)          => api.post('/auth/register', data),
   login:    (email, password) => api.post('/auth/login', { email, password }),
@@ -37,7 +37,7 @@ export const authApi = {
   createPatient: (data)     => api.post('/auth/create-patient', data),
 };
 
-// ─── Business Service ─────────────────────────────────────────
+// Business Service 
 export const doctorApi = {
   list:          (params)  => api.get('/business/doctors', { params }),
   getById:       (id)      => api.get(`/business/doctors/${id}`),
@@ -66,7 +66,7 @@ export const dashboardApi = {
   patient: () => api.get('/business/dashboard/patient'),
 };
 
-// ─── MRI Service ──────────────────────────────────────────────
+// MRI Service
 export const mriApi = {
   upload: (formData, onProgress) => api.post('/mri/scans/upload', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
